@@ -1,0 +1,60 @@
+{
+  "layers": {
+    "Diferencia de Temperatura": {
+      "path": "layers/Diferencia de Temperatura.png",
+      "bbox": {
+        "west": -100.30932222,
+        "east": -100.26641397,
+        "south": 25.63973012,
+        "north": 25.66368451
+      },
+      "epsg_src": 32614,
+      "width_px": 10773,
+      "height_px": 6570
+    },
+    "Indice de Cobertura Vegetal": {
+      "path": "layers/Indice de Cobertura Vegetal.png",
+      "bbox": {
+        "west": -100.30932222,
+        "east": -100.26641397,
+        "south": 25.63973012,
+        "north": 25.66368451
+      },
+      "epsg_src": 32614,
+      "width_px": 10773,
+      "height_px": 6570
+    },
+    "Prioridad de Accion Integrada": {
+      "path": "layers/Prioridad de Accion Integrada.png",
+      "bbox": {
+        "west": -100.30932222,
+        "east": -100.26641397,
+        "south": 25.63973012,
+        "north": 25.66368451
+      },
+      "epsg_src": 32614,
+      "width_px": 10773,
+      "height_px": 6570
+    },
+    "Zonas de Emision": {
+      "path": "layers/Zonas de Emision.png",
+      "bbox": {
+        "west": -100.30932222,
+        "east": -100.26641397,
+        "south": 25.63973012,
+        "north": 25.66368451
+      },
+      "epsg_src": 32614,
+      "width_px": 10773,
+      "height_px": 6570
+    }
+  },
+  "shapes": {
+    "Diferencia_de_Temperatura": "shapes/Diferencia_de_Temperatura.geojson",
+    "distrito": "shapes/distrito.geojson",
+    "manzanas": "shapes/manzanas.geojson",
+    "manzanas_enriquecidas": "shapes/manzanas_enriquecidas.geojson",
+    "NDVI": "shapes/NDVI.geojson"
+  },
+  "generated": "2026-06-08T23:34:03.418118"
+}
