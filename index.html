@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UHI Dashboard — Distrito Monterrey</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg-base:    #EEEFF1;
+    --bg-panel:   #F6F7F9;
+    --bg-raised:  #EAEBEE;
+    --border:     #D0D2D8;
+    --border-sub: #E2E3E8;
+    --text:       #212588;
+    --text-muted: #5558A0;
+    --text-dim:   #9496BB;
+    --accent:     #212588;
+    --green:      #1a6b3c;
+    --green-bg:   #d4eddf;
+    --green-br:   #7ec89a;
+    --red:        #c0392b;
+    --font-mono:  'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  html, body { height: 100%; background: var(--bg-base); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15.6px; }
+
+  /* ── LAYOUT ── */
+  #app { display: grid; grid-template-rows: 44px 1fr 28px; grid-template-columns: 260px 1fr; height: 100vh; }
+
+  #topbar  { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+  #sidebar { grid-row: 2; background: var(--bg-panel); border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column; }
+  #map-wrap { grid-row: 2; position: relative; overflow: hidden; background: #EEEFF1; }
+  #statusbar { grid-column: 1 / -1; background: var(--bg-panel); border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 14px; font-size: 13.2px; color: var(--text-muted); font-family: var(--font-mono); }
+
+  /* ── TOPBAR ── */
+  .tb-left { display: flex; align-items: center; gap: 10px; }
+  .badge { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; background: var(--green-bg); color: var(--green); border: 1px solid var(--green-br); padding: 2px 8px; border-radius: 20px; }
+  .tb-title { font-size: 15.6px; font-weight: 500; }
+  .tb-coords { font-size: 13.2px; color: var(--text-muted); font-family: var(--font-mono); }
+
+  /* ── SIDEBAR ── */
+  .ps { padding: 12px 14px; border-bottom: 1px solid var(--border-sub); }
+  .pl { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+
+  /* Layer selector pills */
+  #layer-list { display: flex; flex-direction: column; gap: 4px; }
+  .layer-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 9px; border-radius: 6px; border: 1px solid transparent;
+    cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .layer-item:hover { background: var(--bg-raised); }
+  .layer-item.active { background: #E0E1F0; border-color: #212588; }
+  .layer-item .li-name { font-size: 14.4px; color: var(--text); }
+  .layer-item .li-size { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
+  .layer-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; margin-right: 7px; }
+
+  /* Controls */
+  .ctrl-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
+  .ctrl-row label { font-size: 14.4px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .ctrl-row label input[type=checkbox] { accent-color: var(--accent); width: 13px; height: 13px; }
+  .opc-wrap { display: flex; align-items: center; gap: 5px; }
+  .opc-wrap input[type=range] { width: 72px; accent-color: var(--accent); cursor: pointer; }
+  .opc-wrap span { font-size: 13.2px; color: var(--text-muted); min-width: 28px; text-align: right; font-family: var(--font-mono); }
+
+  .stroke-row { display: flex; align-items: center; gap: 7px; margin-top: 5px; }
+  .stroke-row span { font-size: 13.2px; color: var(--text-muted); }
+  .stroke-row input[type=color] { width: 24px; height: 20px; border: 1px solid var(--border); background: none; cursor: pointer; border-radius: 4px; padding: 1px; }
+  .stroke-row input[type=range] { width: 60px; accent-color: var(--accent); cursor: pointer; }
+
+  /* Legend */
+  .legend-bar { height: 9px; border-radius: 4px; background: linear-gradient(to right, #2166ac, #74add1, #abd9e9, #ffffbf, #fdae61, #f46d43, #d73027); margin-bottom: 4px; }
+  .legend-ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
+
+  /* Info panel */
+  #info-panel { flex: 1; padding: 12px 14px; overflow-y: auto; min-height: 0; }
+  .info-empty { font-size: 13.2px; color: var(--text-dim); line-height: 1.6; }
+
+  /* Section header */
+  .ip-section { font-size: 10.8px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-dim); margin: 12px 0 6px; padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-sub); }
+  .ip-section:first-child { margin-top: 0; }
+
+  /* Metric card grid */
+  .ip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 2px; }
+  .ip-card {
+    background: var(--bg-raised); border-radius: 6px; padding: 7px 9px;
+    border: 1px solid var(--border-sub);
+  }
+  .ip-card-label { font-size: 10.8px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: .07em; margin-bottom: 2px; }
+  .ip-card-value { font-size: 19.2px; font-weight: 600; color: var(--text);
+    font-family: var(--font-mono); line-height: 1.1; }
+  .ip-card-unit  { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-left: 1px; }
+
+  /* Category badge — full width */
+  .ip-cat {
+    display: flex; align-items: center; justify-content: space-between;
+    border-radius: 6px; padding: 6px 10px; margin-bottom: 5px;
+    border: 1px solid transparent;
+  }
+  .ip-cat-label { font-size: 12px; color: inherit; opacity: .75; text-transform: uppercase;
+    letter-spacing: .07em; }
+  .ip-cat-val   { font-size: 14.4px; font-weight: 700; }
+
+  /* Index bar */
+  .ip-bar-wrap { margin-bottom: 5px; }
+  .ip-bar-header { display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 3px; }
+  .ip-bar-name  { font-size: 12px; color: var(--text-muted); }
+  .ip-bar-score { font-size: 15.6px; font-weight: 700; color: var(--text);
+    font-family: var(--font-mono); }
+  .ip-bar-track { height: 5px; background: var(--border-sub); border-radius: 3px; overflow: hidden; }
+  .ip-bar-fill  { height: 100%; border-radius: 3px; transition: width .4s ease; }
+
+  /* Demographic row */
+  .ip-demo-row { display: flex; justify-content: space-between; padding: 3px 0;
+    border-bottom: 1px solid var(--border-sub); font-size: 13.2px; }
+  .ip-demo-key { color: var(--text-muted); }
+  .ip-demo-val { color: var(--text); font-family: var(--font-mono); font-weight: 500; }
+
+  /* Tooltip */
+  #tooltip {
+    position: absolute; background: rgba(246,247,249,.97); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 11px; pointer-events: none; z-index: 20;
+    display: none; min-width: 150px; max-width: 220px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.5);
+  }
+  .tt-id { font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 5px; }
+  .tt-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 2px; }
+  .tt-k { font-size: 13.2px; color: var(--text-muted); }
+  .tt-v { font-size: 13.2px; color: var(--text); font-family: var(--font-mono); font-weight: 500; }
+
+  /* Error / loading overlays */
+  #overlay {
+    position: absolute; inset: 0; background: rgba(238,239,241,.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 50; gap: 10px; text-align: center; padding: 20px;
+  }
+  #overlay.hidden { display: none; }
+  #overlay .ov-icon { font-size: 38.4px; color: var(--text-muted); }
+  #overlay .ov-msg { font-size: 15.6px; color: var(--text-muted); line-height: 1.6; max-width: 340px; }
+  #overlay .ov-sub { font-size: 13.2px; color: var(--text-dim); font-family: var(--font-mono); }
+  .spinner { width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Extent lock badge */
+  #extent-badge {
+    position: absolute; bottom: 10px; left: 10px;
+    background: rgba(22,27,34,.85); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 9px; font-size: 12px;
+    color: var(--text-muted); z-index: 10; font-family: var(--font-mono);
+    backdrop-filter: blur(4px);
+  }
+
+  /* No controls from maplibre */
+  .maplibregl-control-container { display: none !important; }
+
+  /* ── MOBILE RESPONSIVE ── */
+  /* Hamburger button — hidden on desktop */
+  #btn-menu {
+    display: none; background: none; border: none; cursor: pointer;
+    padding: 6px; color: var(--text); flex-shrink: 0;
+  }
+  #btn-menu svg { display: block; }
+
+  /* Mobile drawer — bottom sheet for info panel */
+  #drawer {
+    display: none;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+    background: var(--bg-panel);
+    border-top: 2px solid var(--border);
+    border-radius: 16px 16px 0 0;
+    max-height: 75vh;
+    overflow-y: auto;
+    transform: translateY(100%);
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    padding: 0 16px 32px;
+  }
+  #drawer.open { transform: translateY(0); }
+  #drawer-handle {
+    width: 40px; height: 4px; background: var(--border);
+    border-radius: 2px; margin: 10px auto 12px; cursor: pointer;
+  }
+  #drawer-title { font-size: 12px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+
+  /* Drawer backdrop */
+  #drawer-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 190;
+    background: rgba(0,0,0,.25);
+  }
+  #drawer-backdrop.open { display: block; }
+
+  @media (max-width: 768px) {
+    /* Full-screen layout: topbar + map fills everything */
+    #app {
+      grid-template-rows: 48px 1fr;
+      grid-template-columns: 1fr;
+      height: 100dvh;
+    }
+
+    /* Sidebar becomes a slide-in overlay from left */
+    #sidebar {
+      position: fixed; top: 48px; left: 0; bottom: 0; z-index: 100;
+      width: min(300px, 85vw);
+      transform: translateX(-100%);
+      transition: transform .3s cubic-bezier(.4,0,.2,1);
+      box-shadow: 4px 0 20px rgba(0,0,0,.12);
+      border-right: 1px solid var(--border);
+    }
+    #sidebar.open { transform: translateX(0); }
+
+    /* Sidebar backdrop */
+    #sidebar-backdrop {
+      display: none; position: fixed; inset: 0; top: 48px; z-index: 90;
+      background: rgba(0,0,0,.25);
+    }
+    #sidebar-backdrop.open { display: block; }
+
+    /* Map occupies full grid cell */
+    #map-wrap { grid-row: 2; grid-column: 1; }
+
+    /* Hide statusbar — too small on mobile */
+    #statusbar { display: none; }
+
+    /* Show hamburger */
+    #btn-menu { display: flex; align-items: center; }
+
+    /* Shrink topbar title */
+    .tb-title { font-size: 13px; }
+    .tb-coords { display: none; }
+    .badge { font-size: 10px; }
+
+    /* Show drawer, hide sidebar info panel on mobile */
+    #drawer { display: block; }
+    #info-panel { display: none; }
+
+    /* Tooltip → disable on mobile (drawer replaces it) */
+    #tooltip { display: none !important; }
+
+    /* extent badge smaller */
+    #extent-badge { font-size: 9px; padding: 3px 6px; bottom: 6px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TOPBAR -->
+  <header id="topbar">
+    <div class="tb-left">
+      <button id="btn-menu" aria-label="Menú" onclick="toggleSidebar()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6"  x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <div class="badge">Distrito Tec</div>
+      <span class="tb-title">Dashboard Interactivo</span>
+    </div>
+    <div class="tb-coords" id="coords-display">—</div>
+  </header>
+  <div id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+
+    <div class="ps">
+      <div class="pl">Capas raster</div>
+      <div id="layer-list"><div style="font-size: 13.2px;color:var(--text-dim);">Cargando config.json…</div></div>
+    </div>
+
+    <div class="ps">
+      <div class="pl">Mapa base</div>
+      <div style="display:flex;gap:6px;">
+        <button id="btn-osm" onclick="setBasemap('osm')" style="flex:1;padding:5px 0;border-radius:5px;border:1px solid var(--accent);background:#E0E1F0;color:var(--accent);font-size: 13.2px;cursor:pointer;">OSM</button>
+        <button id="btn-sat" onclick="setBasemap('sat')" style="flex:1;padding:5px 0;border-radius:5px;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-size: 13.2px;cursor:pointer;">Satellite</button>
+      </div>
+    </div>
+
+    <div class="ps" id="raster-controls">
+      <div class="pl">Raster activo</div>
+      <div class="ctrl-row">
+        <label><input type="checkbox" id="chk-raster" checked> Visible</label>
+        <div class="opc-wrap">
+          <input type="range" id="opc-raster" min="0" max="100" value="75">
+          <span id="opc-raster-val">75%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="ps">
+      <div class="pl">Shapes</div>
+      <div style="font-size: 12px;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Distrito Tec</div>
+      <div class="ctrl-row" style="margin-bottom:4px;">
+        <label><input type="checkbox" id="chk-distrito" checked> Visible</label>
+        <input type="color" id="stroke-distrito" value="#212588" style="width:22px;height:18px;border:1px solid var(--border);background:none;cursor:pointer;border-radius:3px;padding:1px;">
+      </div>
+      <div style="font-size: 12px;color:var(--text-muted);margin:8px 0 4px;font-weight:600;">Manzanas</div>
+      <div class="ctrl-row">
+        <label><input type="checkbox" id="chk-shapes" checked> Visible</label>
+        <div class="opc-wrap">
+          <input type="range" id="opc-shapes" min="0" max="100" value="100">
+          <span id="opc-shapes-val">100%</span>
+        </div>
+      </div>
+      <div class="stroke-row">
+        <span>Color</span>
+        <input type="color" id="stroke-color" value="#212588">
+        <span>ancho</span>
+        <input type="range" id="stroke-width" min="0.5" max="5" step="0.5" value="1.0">
+        <span id="stroke-width-val" style="min-width:24px;font-family:var(--font-mono);">1px</span>
+      </div>
+    </div>
+
+    <div class="ps" id="legend-section">
+      <div class="pl" id="legend-title">Leyenda</div>
+      <div class="legend-bar" id="legend-bar"></div>
+      <div class="legend-ticks" id="legend-ticks"></div>
+    </div>
+
+    <div id="info-panel">
+      <div class="pl" style="margin-bottom:6px;">Manzana seleccionada</div>
+      <div id="info-content">
+        <div class="info-empty">Haz click sobre una manzana para ver sus indicadores.</div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- MAP -->
+  <div id="map-wrap">
+    <div id="map" style="width:100%;height:100%;"></div>
+
+    <div id="extent-badge" id="ext-badge">extent fijo · sin zoom</div>
+
+    <div id="tooltip">
+      <div class="tt-id" id="tt-id">—</div>
+      <div id="tt-hi" style="font-size: 24px;font-weight:700;color:var(--text);font-family:var(--font-mono);margin:2px 0;">—</div>
+      <div id="tt-cats" style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div id="overlay">
+      <div class="spinner"></div>
+      <div class="ov-msg">Cargando config.json…</div>
+      <div class="ov-sub">python -m http.server 8080</div>
+    </div>
+  </div>
+
+  <!-- STATUSBAR -->
+  <footer id="statusbar">
+    <span id="sb-left">—</span>
+    <span id="sb-center">—</span>
+    <span id="sb-right">OSM / Google Satellite · EPSG:4326 · extent fijo</span>
+  </footer>
+
+</div>
+
+<!-- MOBILE DRAWER -->
+<div id="drawer-backdrop" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div id="drawer-handle" onclick="closeDrawer()"></div>
+  <div id="drawer-title">Manzana seleccionada</div>
+  <div id="drawer-content">
+    <div class="info-empty">Toca una manzana para ver sus indicadores.</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+let config      = null;
+let map         = null;
+let activeLayer = null;   // key in config.layers
+let fixedBounds = null;   // [west, south, east, north]
+
+// ── HELPERS ────────────────────────────────────────────────────────────────
+function qs(id) { return document.getElementById(id); }
+
+function setOverlay(msg, sub, showSpinner) {
+  const ov = qs('overlay');
+  ov.classList.remove('hidden');
+  ov.innerHTML = showSpinner
+    ? `<div class="spinner"></div><div class="ov-msg">${msg}</div><div class="ov-sub">${sub || ''}</div>`
+    : `<div class="ov-icon">⚠</div><div class="ov-msg">${msg}</div><div class="ov-sub">${sub || ''}</div>`;
+}
+
+function hideOverlay() { qs('overlay').classList.add('hidden'); }
+
+// ── INIT: fetch config.json ────────────────────────────────────────────────
+async function init() {
+  setOverlay('Cargando config.json…', 'python -m http.server 8080', true);
+
+  try {
+    const res = await fetch('config.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    config = await res.json();
+  } catch(e) {
+    setOverlay(
+      'No se pudo cargar config.json.',
+      'Asegúrate de correr: python -m http.server 8080  y luego abrir http://localhost:8080',
+      false
+    );
+    return;
+  }
+
+  buildLayerList();
+  initMap();
+}
+
+// ── BUILD LAYER LIST IN SIDEBAR ────────────────────────────────────────────
+function buildLayerList() {
+  const list = qs('layer-list');
+  const layers = config.layers || {};
+  const keys = Object.keys(layers);
+
+  if (keys.length === 0) {
+    list.innerHTML = '<div style="font-size:13.2px;color:var(--text-dim);">Sin capas en config.json</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  keys.forEach((key, i) => {
+    const info = layers[key];
+    const item = document.createElement('div');
+    item.className = 'layer-item' + (i === 0 ? ' active' : '');
+    item.dataset.key = key;
+    item.innerHTML = `
+      <div style="display:flex;align-items:center;">
+        <div class="layer-dot"></div>
+        <span class="li-name">${key}</span>
+      </div>`;
+    item.addEventListener('click', () => switchLayer(key, item));
+    list.appendChild(item);
+  });
+}
+
+// ── MAP INIT ───────────────────────────────────────────────────────────────
+function validateBbox(bb) {
+  // Detecta si el bbox está en UTM (valores > 1000 = metros, no grados)
+  if (Math.abs(bb.west) > 1000 || Math.abs(bb.north) > 1000) {
+    setOverlay(
+      'El config.json tiene coordenadas en UTM, no en WGS84.',
+      `West: ${bb.west}  North: ${bb.north} — Exporta el PNG desde QGIS con SRC EPSG:4326, o reproyecta antes de exportar.`,
+      false
+    );
+    return false;
+  }
+  if (bb.north < -90 || bb.north > 90 || bb.south < -90 || bb.south > 90) {
+    setOverlay(
+      `Latitud fuera de rango: north=${bb.north}, south=${bb.south}`,
+      'El PNG debe exportarse en WGS84 (EPSG:4326) desde QGIS.',
+      false
+    );
+    return false;
+  }
+  if (bb.west < -180 || bb.east > 180) {
+    setOverlay(
+      `Longitud fuera de rango: west=${bb.west}, east=${bb.east}`,
+      'El PNG debe exportarse en WGS84 (EPSG:4326) desde QGIS.',
+      false
+    );
+    return false;
+  }
+  return true;
+}
+
+function initMap() {
+  const layers = config.layers || {};
+  const firstKey = Object.keys(layers)[0];
+
+  if (!firstKey) {
+    setOverlay('config.json no tiene capas raster.', 'Agrega PNGs + PGWs en /layers y corre build_config.py', false);
+    return;
+  }
+
+  const firstLayer = layers[firstKey];
+  const bb = firstLayer.bbox;
+
+  // Validar antes de pasarle nada a MapLibre
+  if (!validateBbox(bb)) return;
+
+  // fitBounds espera [[west, south], [east, north]]
+  fixedBounds = [[bb.west, bb.south], [bb.east, bb.north]];
+
+  const centerLon = (bb.west + bb.east) / 2;
+  const centerLat = (bb.south + bb.north) / 2;
+
+  map = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: {
+        'basemap': {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: '© OpenStreetMap contributors'
+        },
+        'google-sat': {
+          type: 'raster',
+          tiles: [
+            'https://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+            'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+            'https://mt2.google.com/vt/lyrs=s&x={x}&y={y}&z={z}'
+          ],
+          tileSize: 256,
+          maxzoom: 20,
+          attribution: '© Google'
+        }
+      },
+      layers: [
+        { id: 'basemap',     type: 'raster', source: 'basemap' },
+        { id: 'google-sat',  type: 'raster', source: 'google-sat', paint: { 'raster-opacity': 0 } }
+      ]
+    },
+    center: [centerLon, centerLat],
+    zoom: 13,
+    attributionControl: false
+  });
+
+  // Deshabilitar interacción DESPUÉS de instanciar (interactive:false rompe el evento load)
+  map.dragPan.disable();
+  map.scrollZoom.disable();
+  map.doubleClickZoom.disable();
+  map.touchZoomRotate.disable();
+  map.keyboard.disable();
+  map.dragRotate.disable();
+  map.boxZoom.disable();
+
+  map.on('error', e => console.warn('MapLibre error:', e.error));
+
+  function onMapReady() {
+    // resize() forces MapLibre to measure the container — critical on mobile
+    // where the grid may not have resolved dimensions yet
+    requestAnimationFrame(() => {
+      map.resize();
+      map.fitBounds(fixedBounds, { padding: 0, duration: 0, animate: false });
+      map.on('moveend', enforceBounds);
+      map.on('zoomend', enforceBounds);
+      loadRasterLayer(firstKey);
+      loadShapes();
+      hideOverlay();
+      qs('sb-left').textContent = `Capas: ${Object.keys(config.layers).length}`;
+      updateExtentBadge(firstLayer.bbox);
+    });
+  }
+
+  map.on('load', onMapReady);
+
+  // Fallback: si load no dispara en 3s (CORS en tiles base)
+  setTimeout(() => {
+    if (!qs('overlay').classList.contains('hidden')) {
+      console.warn('map load timeout — forzando init');
+      try { onMapReady(); } catch(e) { console.error(e); }
+    }
+  }, 3000);
+
+  map.on('mousemove', e => {
+    const {lng, lat} = e.lngLat;
+    qs('coords-display').textContent = `lat ${lat.toFixed(6)}  lon ${lng.toFixed(6)}`;
+  });
+}
+
+let _enforcingBounds = false;
+function enforceBounds() {
+  if (!fixedBounds || !map || _enforcingBounds) return;
+  const currentBounds = map.getBounds();
+  const [[west, south], [east, north]] = fixedBounds;
+  if (
+    Math.abs(currentBounds.getWest()  - west)  > 0.00001 ||
+    Math.abs(currentBounds.getNorth() - north) > 0.00001
+  ) {
+    _enforcingBounds = true;
+    map.fitBounds(fixedBounds, { padding: 0, duration: 0, animate: false });
+    setTimeout(() => { _enforcingBounds = false; }, 100);
+  }
+}
+
+function updateExtentBadge(bb) {
+  qs('extent-badge').textContent =
+    `W ${bb.west.toFixed(5)} · E ${bb.east.toFixed(5)} · S ${bb.south.toFixed(5)} · N ${bb.north.toFixed(5)}`;
+}
+
+// ── RASTER LAYER ───────────────────────────────────────────────────────────
+function loadRasterLayer(key) {
+  const info = config.layers[key];
+  const bb   = info.bbox;
+
+  if (map.getLayer('uhi-raster'))  map.removeLayer('uhi-raster');
+  if (map.getSource('uhi-img'))    map.removeSource('uhi-img');
+
+  map.addSource('uhi-img', {
+    type: 'image',
+    url: info.path,
+    coordinates: [
+      [bb.west,  bb.north],
+      [bb.east,  bb.north],
+      [bb.east,  bb.south],
+      [bb.west,  bb.south]
+    ]
+  });
+
+  map.addLayer({
+    id: 'uhi-raster',
+    type: 'raster',
+    source: 'uhi-img',
+    paint: { 'raster-opacity': 0.75 }
+  });
+
+  // Asegurar que shapes queden encima
+  ['distrito-line', 'shapes-fill', 'shapes-line', 'shapes-hover'].forEach(id => {
+    if (map.getLayer(id)) map.moveLayer(id);
+  });
+
+  activeLayer = key;
+  fixedBounds = [[bb.west, bb.south], [bb.east, bb.north]];
+  // No animation — animated fitBounds fires moveend mid-flight → enforceBounds loop on iOS
+  _enforcingBounds = true;
+  map.fitBounds(fixedBounds, { padding: 0, duration: 0, animate: false });
+  setTimeout(() => { _enforcingBounds = false; }, 200);
+  updateExtentBadge(bb);
+  qs('sb-center').textContent = `Raster activo: ${key}`;
+  updateLegend(key);
+}
+
+function switchLayer(key, el) {
+  document.querySelectorAll('.layer-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+  loadRasterLayer(key);
+  // Reset info panels
+  const panel = qs('info-content');
+  if (panel && panel.querySelector('.ip-section')) {
+    panel.innerHTML = '<div class="info-empty">Haz click sobre una manzana para ver sus indicadores.</div>';
+  }
+  closeDrawer();
+  // On mobile: close sidebar after selection, then refit without resize interference
+  if (isMobile()) {
+    const sb = qs('sidebar');
+    const bd = qs('sidebar-backdrop');
+    sb.classList.remove('open');
+    bd.classList.remove('open');
+    // Refit after sidebar CSS transition (300ms) — do NOT call map.resize() here
+    // to avoid triggering the global resize handler
+    setTimeout(() => {
+      if (map && fixedBounds) {
+        _enforcingBounds = true;
+        map.fitBounds(fixedBounds, { padding: 0, duration: 0, animate: false });
+        setTimeout(() => { _enforcingBounds = false; }, 200);
+      }
+    }, 350);
+  }
+}
+
+// ── DATA STORE — geojson lookup by CVEGEO ──────────────────────────────────
+const GEO_DATA = {
+  manzanas:    {},   // CVEGEO → props  (manzanas_enriquecidas)
+  ndvi:        {},   // CVEGEO → props
+  delta_temp:  {},   // CVEGEO → props
+};
+
+function indexGeojson(store, gj) {
+  (gj.features || []).forEach(f => {
+    const key = f.properties?.CVEGEO;
+    if (key) store[key] = f.properties;
+  });
+}
+
+function propsForFeature(f) {
+  const cvegeo = f.properties?.CVEGEO;
+  return {
+    manzana:   GEO_DATA.manzanas[cvegeo]   || f.properties || {},
+    ndvi:      GEO_DATA.ndvi[cvegeo]       || {},
+    delta:     GEO_DATA.delta_temp[cvegeo] || {},
+  };
+}
+
+// ── SHAPES ────────────────────────────────────────────────────────────────
+async function loadShapes() {
+  const shapes = config.shapes || {};
+  let manzanasN = 0;
+
+  const loaders = [
+    // [match fn, handler]
+    [k => k.toLowerCase().includes('distrito'),
+      async (path) => { const gj = await fetchGJ(path); if (gj) addDistritoLayer(gj); }],
+    [k => k.toLowerCase() === 'manzanas_enriquecidas' || k.toLowerCase().includes('enriquecida'),
+      async (path) => {
+        const gj = await fetchGJ(path);
+        if (!gj) return;
+        indexGeojson(GEO_DATA.manzanas, gj);
+        addManzanasLayer(gj);
+        manzanasN = gj.features ? gj.features.length : 0;
+      }],
+    [k => k.toLowerCase().includes('ndvi'),
+      async (path) => { const gj = await fetchGJ(path); if (gj) indexGeojson(GEO_DATA.ndvi, gj); console.log('[shapes] NDVI indexed', Object.keys(GEO_DATA.ndvi).length, 'features'); }],
+    [k => k.toLowerCase().includes('diferencia') || (k.toLowerCase().includes('temperatura') && !k.toLowerCase().includes('ndvi')),
+      async (path) => { const gj = await fetchGJ(path); if (gj) indexGeojson(GEO_DATA.delta_temp, gj); console.log('[shapes] Delta indexed', Object.keys(GEO_DATA.delta_temp).length, 'features'); }],
+  ];
+
+  for (const [matchFn, handler] of loaders) {
+    const entry = Object.entries(shapes).find(([k]) => matchFn(k));
+    if (entry) await handler(entry[1]).catch(e => console.warn('shape load error:', e));
+  }
+
+  qs('sb-left').textContent = `Capas: ${Object.keys(config.layers).length} · Manzanas: ${manzanasN}`;
+}
+
+async function fetchGJ(path) {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${path}`);
+  return res.json();
+}
+
+function addDistritoLayer(gj) {
+  if (map.getSource('distrito')) return;
+  map.addSource('distrito', { type: 'geojson', data: gj });
+  map.addLayer({ id: 'distrito-line', type: 'line', source: 'distrito',
+    paint: {
+      'line-color': qs('stroke-distrito').value,
+      'line-width': 2.5,
+      'line-opacity': 1
+    }
+  });
+}
+
+function addManzanasLayer(gj) {
+  if (map.getSource('manzanas')) return;
+  map.addSource('manzanas', { type: 'geojson', data: gj, generateId: true });
+
+  map.addLayer({ id: 'shapes-fill', type: 'fill', source: 'manzanas',
+    paint: { 'fill-color': '#ffffff', 'fill-opacity': 0 }
+  });
+  map.addLayer({ id: 'shapes-line', type: 'line', source: 'manzanas',
+    paint: {
+      'line-color': qs('stroke-color').value,
+      'line-width': parseFloat(qs('stroke-width').value),
+      'line-opacity': parseInt(qs('opc-shapes').value) / 100
+    }
+  });
+  map.addLayer({ id: 'shapes-hover', type: 'fill', source: 'manzanas',
+    paint: {
+      'fill-color': '#212588',
+      'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.12, 0]
+    }
+  });
+
+  setupInteraction();
+}
+
+// ── RASTER → PANEL MAPPING ────────────────────────────────────────────────
+// Maps raster key (from config.json) to which render function to use.
+// Keys are matched by substring (lowercase).
+const RASTER_PANEL_MAP = [
+  { match: 'diferencia de temperatura',   render: renderDeltaTemp  },
+  { match: 'indice de cobertura vegetal', render: renderNDVI       },
+  { match: 'prioridad de accion',         render: renderPrioridad  },
+
+  { match: 'zonas de emision',            render: renderEmisiones  },
+];
+
+function normalizeKey(s) {
+  return (s || '').toLowerCase()
+    .normalize('NFD').replace(/̀-ͯ/g, '')
+    .replace(/[̀-ͯ]/g, '');
+}
+
+function getRenderFn(rasterKey) {
+  const k = normalizeKey(rasterKey);
+  const entry = RASTER_PANEL_MAP.find(m => k.includes(normalizeKey(m.match)));
+  return entry ? entry.render : renderDeltaTemp;
+}
+
+// ── CATEGORY COLORS ────────────────────────────────────────────────────────
+const CAT_COLORS = {
+  'Normal':              { bg: '#fee5d9', text: '#1a1a2e', border: '#e0c7bb' },
+  'Precaución':          { bg: '#fcbba1', text: '#1a1a2e', border: '#de9d83' },
+  'Precaucion':          { bg: '#fcbba1', text: '#1a1a2e', border: '#de9d83' },
+  'Precaución extrema':  { bg: '#fc8868', text: '#1a1a2e', border: '#de6a4a' },
+  'Precaucion extrema':  { bg: '#fc8868', text: '#1a1a2e', border: '#de6a4a' },
+  'Peligro':             { bg: '#ea4534', text: '#1a1a2e', border: '#cc2716' },
+  'Peligro extremo':     { bg: '#a50f15', text: '#ffffff', border: '#870000' },
+  'Bajo':                { bg: '#4393c3', text: '#1a1a2e', border: '#2575a5' },
+  'Moderado':            { bg: '#d0e4f0', text: '#1a1a2e', border: '#b2c6d2' },
+  'Alto':                { bg: '#f4a785', text: '#1a1a2e', border: '#d68967' },
+  'Crítico':             { bg: '#b2182b', text: '#ffffff', border: '#94000d' },
+  'Critico':             { bg: '#b2182b', text: '#ffffff', border: '#94000d' },
+  'Bajo_ipe':            { bg: '#feebe2', text: '#1a1a2e', border: '#e0cdc4' },
+  'Moderado_ipe':        { bg: '#fa9cb1', text: '#1a1a2e', border: '#dc7e93' },
+  'Alto_ipe':            { bg: '#d73792', text: '#ffffff', border: '#b91974' },
+  'Crítico_ipe':         { bg: '#7a0177', text: '#ffffff', border: '#5c0059' },
+};
+
+function catStyle(cat) {
+  return CAT_COLORS[cat] || { bg: 'var(--bg-raised)', text: 'var(--text)', border: 'var(--border)' };
+}
+function normCat(s) {
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+}
+function catStyleSafe(cat) {
+  if (!cat || cat === '—') return { bg: 'var(--bg-raised)', text: 'var(--text)', border: 'var(--border)' };
+  const n = normCat(cat);
+  const k = Object.keys(CAT_COLORS).find(k => normCat(k) === n);
+  return k ? CAT_COLORS[k] : { bg: 'var(--bg-raised)', text: 'var(--text)', border: 'var(--border)' };
+}
+function catStyleIPESafe(cat) {
+  if (!cat || cat === '—') return { bg: 'var(--bg-raised)', text: 'var(--text)', border: 'var(--border)' };
+  const n = normCat(cat) + '_ipe';
+  const k = Object.keys(CAT_COLORS).find(k => normCat(k) === n);
+  return k ? CAT_COLORS[k] : catStyleSafe(cat);
+}
+
+function barColor(score) {
+  if (score >= 75) return '#c0392b';
+  if (score >= 50) return '#e67e22';
+  if (score >= 25) return '#f1c40f';
+  return '#27ae60';
+}
+
+function fmt(v, dec) {
+  if (v == null || v === '' || isNaN(Number(v))) return '—';
+  return Number(v).toFixed(dec);
+}
+
+// ── SHARED HELPERS ─────────────────────────────────────────────────────────
+function demoPob(m) {
+  const pob      = m.pob_total != null ? Number(m.pob_total).toLocaleString('es-MX') : '—';
+  const sensible = fmt(m.pct_pob_sensible, 1);
+  const ninos    = fmt(m.pct_ninos,        1);
+  const mayores  = fmt(m.pct_adultos_may,  1);
+  return `
+    <div class="ip-section">Población</div>
+    <div class="ip-demo-row"><span class="ip-demo-key">Total habitantes</span><span class="ip-demo-val">${pob}</span></div>
+    <div class="ip-demo-row"><span class="ip-demo-key">Pob. sensible</span><span class="ip-demo-val">${sensible}%</span></div>
+    <div class="ip-demo-row"><span class="ip-demo-key">Niños (0–14)</span><span class="ip-demo-val">${ninos}%</span></div>
+    <div class="ip-demo-row" style="border:none;"><span class="ip-demo-key">Adultos may. (65+)</span><span class="ip-demo-val">${mayores}%</span></div>`;
+}
+
+function classBars(data, maxClass, palette) {
+  let bars = '';
+  for (let i = 0; i <= maxClass; i++) {
+    const lbl = data[`lbl_${i}`];
+    const pct = data[`pct_${i}`];
+    if (!lbl || pct == null) continue;
+    const v = Math.max(0, Math.min(100, Number(pct)));
+    let fillColor;
+    if (palette && palette.length) {
+      const idx = Math.round(i / maxClass * (palette.length - 1));
+      fillColor = palette[Math.min(idx, palette.length - 1)];
+    } else {
+      fillColor = barColor(i / maxClass * 100);
+    }
+    bars += `
+      <div class="ip-bar-wrap">
+        <div class="ip-bar-header">
+          <span class="ip-bar-name">${lbl}</span>
+          <span class="ip-bar-score">${v.toFixed(1)}%</span>
+        </div>
+        <div class="ip-bar-track"><div class="ip-bar-fill" style="width:${v}%;background:${fillColor};"></div></div>
+      </div>`;
+  }
+  return bars;
+}
+
+// ── 1. DIFERENCIA DE TEMPERATURA ───────────────────────────────────────────
+// Classes: 0=Óptimo 1=Ligero 2=Moderado 3=Elevado 4=Muy elevado 5=Severo 6=Extremo
+function renderDeltaTemp({ manzana: m, delta: d }) {
+  const hi   = fmt(m.hi_mean,   1);
+  const tair = fmt(m.tair_mean, 1);
+  const rh   = fmt(m.rh_mean,   0);
+  return `
+    <div class="ip-section">Distribución de temperatura</div>
+    ${classBars(d, 6, ['#4393c3','#92c5de','#d1e5f0','#fddbc7','#f4a582','#d6604d','#b2182b'])}
+    <div class="ip-section">Sensación térmica</div>
+    <div class="ip-grid">
+      <div class="ip-card">
+        <div class="ip-card-label">Heat Index</div>
+        <div class="ip-card-value">${hi}<span class="ip-card-unit">°C</span></div>
+      </div>
+      <div class="ip-card">
+        <div class="ip-card-label">Temp. aire</div>
+        <div class="ip-card-value">${tair}<span class="ip-card-unit">°C</span></div>
+      </div>
+      <div class="ip-card" style="grid-column:1/-1;">
+        <div class="ip-card-label">Humedad relativa</div>
+        <div class="ip-card-value">${rh}<span class="ip-card-unit">%</span></div>
+      </div>
+    </div>
+    ${demoPob(m)}`;
+}
+
+function renderNDVI({ manzana: m, ndvi: n }) {
+  const shannon = n.shannon_normalized != null ? Number(n.shannon_normalized).toFixed(2) : '—';
+  return `
+    <div class="ip-section">Cobertura vegetal</div>
+    ${classBars(n, 3, ['#1a7741','#52b788','#b7e4c7','#adb5bd'])}
+    <div class="ip-section">Diversidad de cobertura</div>
+    <div class="ip-demo-row" style="border:none;">
+      <span class="ip-demo-key">Índice Shannon (0–1)</span>
+      <span class="ip-demo-val">${shannon}</span>
+    </div>
+    ${demoPob(m)}`;
+}
+
+// ── 4. ZONAS DE EMISIÓN ────────────────────────────────────────────────────
+function renderEmisiones({ manzana: m }) {
+  const ipe    = fmt(m.ipe_mean, 2);
+  const iec    = fmt(m.iec,      0);
+  const iecCat = m.iec_cat || '—';
+  const iecS   = catStyleIPESafe(iecCat);
+  const iecN   = isNaN(Number(m.iec)) ? 0 : Math.min(100, Math.max(0, Number(m.iec)));
+  const ipePal = ['#feebe2','#fbb4b9','#f768a1','#c51b8a','#7a0177'];
+  const ipeBar = ipePal[Math.min(Math.round(iecN/100*(ipePal.length-1)), ipePal.length-1)];
+  return `
+    <div class="ip-section">Presión de emisiones</div>
+    <div class="ip-card" style="margin-bottom:6px;">
+      <div class="ip-card-label">IPE — Índice de Presión de Emisiones</div>
+      <div class="ip-card-value">${ipe}<span class="ip-card-unit"> / 1.0</span></div>
+    </div>
+    <div class="ip-section">Exposición a contaminación</div>
+    <div class="ip-bar-wrap">
+      <div class="ip-bar-header">
+        <span class="ip-bar-name">IEC</span>
+        <span class="ip-bar-score">${iec}</span>
+      </div>
+      <div class="ip-bar-track"><div class="ip-bar-fill" style="width:${iecN}%;background:${ipeBar};"></div></div>
+    </div>
+    <div class="ip-cat" style="background:${iecS.bg};border-color:${iecS.border};color:${iecS.text};">
+      <span class="ip-cat-label">IEC categoría</span>
+      <span class="ip-cat-val">${iecCat}</span>
+    </div>
+    ${demoPob(m)}`;
+}
+
+// ── 5. PRIORIDAD DE ACCIÓN INTEGRADA ───────────────────────────────────────
+function renderPrioridad({ manzana: m }) {
+  const ivs    = fmt(m.ivs, 0);
+  const iec    = fmt(m.iec, 0);
+  const ivsCat = m.ivs_cat || '—';
+  const iecCat = m.iec_cat || '—';
+  const ivsS   = catStyleSafe(ivsCat);
+  const iecS   = catStyleSafe(iecCat);
+  const ivsN   = isNaN(Number(m.ivs)) ? 0 : Math.min(100, Math.max(0, Number(m.ivs)));
+  const iecN   = isNaN(Number(m.iec)) ? 0 : Math.min(100, Math.max(0, Number(m.iec)));
+  const dPal   = ['#4393c3','#92c5de','#d1e5f0','#fddbc7','#f4a582','#d6604d','#b2182b'];
+  const ivsBar = dPal[Math.min(Math.round(ivsN/100*(dPal.length-1)), dPal.length-1)];
+  const iecBar = dPal[Math.min(Math.round(iecN/100*(dPal.length-1)), dPal.length-1)];
+  return `
+    <div class="ip-section">Prioridad de acción</div>
+    <div class="ip-bar-wrap">
+      <div class="ip-bar-header">
+        <span class="ip-bar-name">IVS — Vulnerabilidad al calor</span>
+        <span class="ip-bar-score">${ivs}</span>
+      </div>
+      <div class="ip-bar-track"><div class="ip-bar-fill" style="width:${ivsN}%;background:${ivsBar};"></div></div>
+    </div>
+    <div class="ip-cat" style="background:${ivsS.bg};border-color:${ivsS.border};color:${ivsS.text};">
+      <span class="ip-cat-label">IVS</span><span class="ip-cat-val">${ivsCat}</span>
+    </div>
+    <div class="ip-bar-wrap" style="margin-top:6px;">
+      <div class="ip-bar-header">
+        <span class="ip-bar-name">IEC — Exposición a contaminación</span>
+        <span class="ip-bar-score">${iec}</span>
+      </div>
+      <div class="ip-bar-track"><div class="ip-bar-fill" style="width:${iecN}%;background:${iecBar};"></div></div>
+    </div>
+    <div class="ip-cat" style="background:${iecS.bg};border-color:${iecS.border};color:${iecS.text};">
+      <span class="ip-cat-label">IEC</span><span class="ip-cat-val">${iecCat}</span>
+    </div>
+    ${demoPob(m)}`;
+}
+
+// ── INTERACTION ────────────────────────────────────────────────────────────
+let hoveredId = null;
+
+function setupInteraction() {
+  const mapEl = qs('map');
+  const tooltip = qs('tooltip');
+
+  map.on('mousemove', 'shapes-fill', e => {
+    if (!e.features.length) return;
+    mapEl.style.cursor = 'crosshair';
+    const f = e.features[0];
+    if (hoveredId !== null) map.setFeatureState({ source: 'manzanas', id: hoveredId }, { hover: false });
+    hoveredId = f.id;
+    map.setFeatureState({ source: 'manzanas', id: hoveredId }, { hover: true });
+
+    const data = propsForFeature(f);
+    const p = data.manzana;
+    const d = data.delta;
+    const n = data.ndvi;
+    const rk = normalizeKey(activeLayer);
+
+    qs('tt-id').textContent = f.properties?.CVEGEO || f.properties?.CVE_MZA || 'Manzana';
+
+    // Main metric + badge depend on active raster
+    let mainVal = '—', mainColor = 'var(--text)', badges = [];
+    if (rk.includes('diferencia de temperatura')) {
+      mainVal = p.hi_mean != null ? Number(p.hi_mean).toFixed(1) + '°C' : (d.dominant_label || '—');
+      const hiCat = p.hi_cat || '';
+      if (hiCat) badges.push({ label: hiCat, style: catStyleSafe(hiCat) });
+    } else if (rk.includes('indice de cobertura vegetal')) {
+      mainVal = n.dominant_label || '—';
+      const pct = n.dominant_pct != null ? Number(n.dominant_pct).toFixed(0) + '%' : '';
+      if (pct) badges.push({ label: pct, style: { bg:'var(--bg-raised)',text:'var(--text)',border:'var(--border)' }});
+    } else if (rk.includes('zonas de emision')) {
+      mainVal = p.iec_cat || '—';
+      const cs = catStyle(mainVal);
+      mainColor = cs.text;
+      if (p.ipe_mean != null) badges.push({ label: `IPE ${Number(p.ipe_mean).toFixed(2)}`, style: cs });
+    } else if (rk.includes('prioridad de accion')) {
+      mainVal = p.ivs_cat || '—';
+      const cs = catStyle(mainVal);
+      mainColor = cs.text;
+      if (p.ivs_cat) badges.push({ label: `IVS: ${p.ivs_cat}`, style: cs });
+      if (p.iec_cat) badges.push({ label: `IEC: ${p.iec_cat}`, style: catStyle(p.iec_cat) });
+    } else {
+      // fallback — show hi_mean if available
+      mainVal = p.hi_mean != null ? Number(p.hi_mean).toFixed(1) + '°C' : '—';
+    }
+
+    qs('tt-hi').textContent = mainVal;
+    qs('tt-hi').style.color = mainColor;
+    qs('tt-cats').innerHTML = badges.map(c =>
+      `<span style="font-size:10.8px;padding:2px 6px;border-radius:10px;
+        background:${c.style.bg};color:${c.style.text};border:1px solid ${c.style.border};
+        font-weight:600;white-space:nowrap;">${c.label}</span>`
+    ).join('');
+
+    const rect = qs('map-wrap').getBoundingClientRect();
+    let tx = e.originalEvent.clientX - rect.left + 14;
+    let ty = e.originalEvent.clientY - rect.top  + 14;
+    if (tx + 210 > rect.width)  tx = e.originalEvent.clientX - rect.left - 210;
+    if (ty + 120 > rect.height) ty = e.originalEvent.clientY - rect.top  - 120;
+    tooltip.style.left    = tx + 'px';
+    tooltip.style.top     = ty + 'px';
+    tooltip.style.display = 'block';
+  });
+
+  map.on('mouseleave', 'shapes-fill', () => {
+    mapEl.style.cursor = '';
+    tooltip.style.display = 'none';
+    if (hoveredId !== null) {
+      map.setFeatureState({ source: 'manzanas', id: hoveredId }, { hover: false });
+      hoveredId = null;
+    }
+  });
+
+  map.on('click', 'shapes-fill', e => {
+    if (!e.features.length) return;
+    const data     = propsForFeature(e.features[0]);
+    const renderFn = getRenderFn(activeLayer);
+    const html     = renderFn(data);
+    if (isMobile()) {
+      openDrawer(html);
+    } else {
+      qs('info-content').innerHTML = html;
+    }
+  });
+}
+
+// ── CONTROLS ───────────────────────────────────────────────────────────────
+qs('opc-raster').addEventListener('input', function() {
+  qs('opc-raster-val').textContent = this.value + '%';
+  if (map && map.getLayer('uhi-raster'))
+    map.setPaintProperty('uhi-raster', 'raster-opacity', parseInt(this.value) / 100);
+});
+
+qs('chk-raster').addEventListener('change', function() {
+  if (map && map.getLayer('uhi-raster'))
+    map.setLayoutProperty('uhi-raster', 'visibility', this.checked ? 'visible' : 'none');
+});
+
+qs('opc-shapes').addEventListener('input', function() {
+  qs('opc-shapes-val').textContent = this.value + '%';
+  if (map && map.getLayer('shapes-line'))
+    map.setPaintProperty('shapes-line', 'line-opacity', parseInt(this.value) / 100);
+});
+
+qs('chk-shapes').addEventListener('change', function() {
+  if (!map) return;
+  const vis = this.checked ? 'visible' : 'none';
+  ['shapes-fill','shapes-line','shapes-hover'].forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  });
+});
+
+qs('chk-distrito').addEventListener('change', function() {
+  if (map && map.getLayer('distrito-line'))
+    map.setLayoutProperty('distrito-line', 'visibility', this.checked ? 'visible' : 'none');
+});
+
+qs('stroke-distrito').addEventListener('input', function() {
+  if (map && map.getLayer('distrito-line'))
+    map.setPaintProperty('distrito-line', 'line-color', this.value);
+});
+
+qs('stroke-color').addEventListener('input', function() {
+  if (map && map.getLayer('shapes-line'))
+    map.setPaintProperty('shapes-line', 'line-color', this.value);
+});
+
+qs('stroke-width').addEventListener('input', function() {
+  qs('stroke-width-val').textContent = parseFloat(this.value).toFixed(1) + 'px';
+  if (map && map.getLayer('shapes-line'))
+    map.setPaintProperty('shapes-line', 'line-width', parseFloat(this.value));
+});
+
+// ── BASEMAP TOGGLE ────────────────────────────────────────────────────────
+function setBasemap(mode) {
+  if (!map) return;
+  if (mode === 'sat') {
+    if (map.getLayer('basemap'))    map.setLayoutProperty('basemap',    'visibility', 'none');
+    if (map.getLayer('google-sat')) map.setPaintProperty('google-sat', 'raster-opacity', 1);
+    document.getElementById('btn-sat').style.borderColor = 'var(--accent)';
+    document.getElementById('btn-sat').style.color = 'var(--accent)';
+    document.getElementById('btn-sat').style.background = '#E0E1F0';
+    document.getElementById('btn-osm').style.borderColor = 'var(--border)';
+    document.getElementById('btn-osm').style.color = 'var(--text-muted)';
+    document.getElementById('btn-osm').style.background = 'transparent';
+  } else {
+    if (map.getLayer('basemap'))    map.setLayoutProperty('basemap',    'visibility', 'visible');
+    if (map.getLayer('google-sat')) map.setPaintProperty('google-sat', 'raster-opacity', 0);
+    document.getElementById('btn-osm').style.borderColor = 'var(--accent)';
+    document.getElementById('btn-osm').style.color = 'var(--accent)';
+    document.getElementById('btn-osm').style.background = '#E0E1F0';
+    document.getElementById('btn-sat').style.borderColor = 'var(--border)';
+    document.getElementById('btn-sat').style.color = 'var(--text-muted)';
+    document.getElementById('btn-sat').style.background = 'transparent';
+  }
+}
+
+// ── LEGEND UPDATE ─────────────────────────────────────────────────────────
+const LEGENDS = {
+  'diferencia de temperatura': {
+    title: 'Diferencia de Temperatura',
+    gradient: 'linear-gradient(to right,#4393c3,#92c5de,#d1e5f0,#fddbc7,#f4a582,#d6604d,#b2182b)',
+    ticks: ['Óptimo', 'Extremo']
+  },
+  'indice de cobertura vegetal': {
+    title: 'Índice de Cobertura Vegetal',
+    gradient: 'linear-gradient(to right,#1a7741,#52b788,#b7e4c7,#adb5bd)',
+    ticks: ['Veg. Densa', 'Urbanizado']
+  },
+  'prioridad de accion': {
+    title: 'Prioridad de Acción Integrada',
+    gradient: 'linear-gradient(to right,#4393c3,#92c5de,#d1e5f0,#fddbc7,#f4a582,#d6604d,#b2182b)',
+    ticks: ['Baja', 'Crítica']
+  },
+  'sensacion termica': {
+    title: 'Diferencia de Temperatura',
+    gradient: 'linear-gradient(to right,#4393c3,#92c5de,#d1e5f0,#fddbc7,#f4a582,#d6604d,#b2182b)',
+    ticks: ['Óptimo', 'Extremo']
+  },
+  'zonas de emision': {
+    title: 'Intensidad de Emisiones',
+    gradient: 'linear-gradient(to right,#feebe2,#fbb4b9,#f768a1,#c51b8a,#7a0177)',
+    ticks: ['Baja', 'Alta']
+  },
+};
+
+function updateLegend(key) {
+  const k = normalizeKey(key);
+  const entry = Object.entries(LEGENDS).find(([m]) => k.includes(normalizeKey(m)));
+  const leg = entry ? entry[1] : Object.values(LEGENDS)[0];
+  qs('legend-title').textContent = leg.title;
+  qs('legend-bar').style.background = leg.gradient;
+  qs('legend-ticks').innerHTML = leg.ticks.map(t => `<span>${t}</span>`).join('');
+}
+
+// ── MOBILE ────────────────────────────────────────────────────────────────
+function isMobile() { return window.innerWidth <= 768; }
+
+function toggleSidebar() {
+  const sb = qs('sidebar');
+  const bd = qs('sidebar-backdrop');
+  const isOpen = sb.classList.contains('open');
+  sb.classList.toggle('open', !isOpen);
+  bd.classList.toggle('open', !isOpen);
+  // Refit after sidebar animation settles
+  if (isOpen && map && fixedBounds) {
+    setTimeout(() => {
+      map.resize();
+      map.fitBounds(fixedBounds, { padding: 0, duration: 0, animate: false });
+    }, 320);
+  }
+}
+
+function openDrawer(html) {
+  qs('drawer-content').innerHTML = html;
+  qs('drawer').classList.add('open');
+  qs('drawer-backdrop').classList.add('open');
+}
+
+function closeDrawer() {
+  qs('drawer').classList.remove('open');
+  qs('drawer-backdrop').classList.remove('open');
+}
+
+// Resize → refit bounds so PNG doesn't clip
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (map && fixedBounds && !_enforcingBounds) {
+      map.resize();
+      _enforcingBounds = true;
+      map.fitBounds(fixedBounds, { padding: 0, duration: 0, animate: false });
+      setTimeout(() => { _enforcingBounds = false; }, 200);
+    }
+  }, 200);
+});
+
+// Orientation change — extra refit after layout settles
+window.addEventListener('orientationchange', () => {
+  setTimeout(() => {
+    if (map && fixedBounds) {
+      map.resize();
+      map.fitBounds(fixedBounds, { padding: 0, duration: 0, animate: false });
+    }
+  }, 500);
+});
+
+// ── BOOT ───────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
